@@ -1,0 +1,9 @@
+% bibentry template for lsst.bib in https://github.com/lsst/lsst-texmf/blob/master/texmf/bibtex/bib/lsst.bib
+
+@DocuShare{DMTN-210,
+   author = { Spencer Nelson },
+    title = {Implementation of the LSST Alert Distribution System},
+     year = 2021,
+    month = Nov,
+   handle = {DMTN-210},
+      url = {https://dmtn-210.lsst.io } }
