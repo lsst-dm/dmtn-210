@@ -24,12 +24,12 @@ The implementation runs on the shared Rubin Science Platform Kubernetes cluster 
 At the highest conceptual level, it is composed of an Apache Kafka :cite:`kafka` cluster, a Confluent Schema Registry :cite:`confluent-schema-registry`, software to generate simulated alerts, and an alert database implemenntation following the design laid out in DMTN-183 :cite:`DMTN-183`.
 
 Terminology and Concepts
-------------------------
+========================
 
 In order to explain the components that make up the Alert Distribution System, it's helpful to first establish some basic concepts behind deployments to Kubernetes in general, and to Rubin's Science Platform Kubernetes cluster in particular.
 
 Resources
-~~~~~~~~~
+---------
 
 Kubernetes is built on *resources*.
 These are abstract descriptions of persistent entities that should be configured and run in a particular Kubernetes cluster.
@@ -44,14 +44,14 @@ These namespaces act as boundaries for authorization, as well as providing namin
 Somewhat unconventionally, all of the alert stream resources are in one namespace, "alert-stream-broker", which will be explained in a later section.
 
 Operators
-~~~~~~~~~
+---------
 
 Kubernetes *operators* are programs that run within the Kubernetes cluster, and take actions when resources are created, modified, or deleted.
 There are many default operators, and others that are installed to the cluster explicitly.
 The Alert Distribution System uses two such custom operators: Strimzi :cite:`strimzi` and Strimzi Registry Operator :cite:`strimzi-registry-operator`.
 
 Helm Charts
-~~~~~~~~~~~
+-----------
 
 Helm :cite:`helm` is a project which provides tools for templating the YAML resource definitions used in Kubernetes.
 The templates are called _Charts_, and provide a flexible way to represent common or repeated configuration.
@@ -68,38 +68,38 @@ For the Rubin IDF, the values to be used are defined in the `lsst-sqre/phalanx`_
 These two repositories are part of the Phalanx system, described in SQR-056 :cite:`SQR-056` and at `phalanx.lsst.io <https://phalanx.lsst.io/>`__.
 
 Argo
-~~~~
+----
 
 While Helm can be run as a tool on the command line, the Science Platform convention is to run it through Argo CD :cite:`argo-cd`.
 Argo CD is a platform for coordinating changes to a Kubernetes cluster, and it is able to run Helm directly.
 It is configured through a set of conventions in the `lsst-sqre/phalanx`_ repository.
 
 Terraform
-~~~~~~~~~
+---------
 
 Terraform :cite:`terraform` is a tool for provisioning infrastructure through code.
 pOn the Rubin Science Platform, Terraform is used to provision non-Kubernetes resources, such as Google Cloud Storage buckets.
 
 Principal Components
---------------------
+====================
 
 Strimzi Operator
-~~~~~~~~~~~~~~~~
+----------------
 
 Kakfa Cluster
-~~~~~~~~~~~~~
+-------------
 
 Strimzi Registry Operator
-~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------------
 
 Strimzi Registry
-~~~~~~~~~~~~~~~~
+----------------
 
 Alert Stream Simulator
-~~~~~~~~~~~~~~~~~~~~~~
+----------------------
 
 Alert Database
-~~~~~~~~~~~~~~
+--------------
 
 
 .. bibliography:: local.bib lsstbib/books.bib lsstbib/lsst.bib lsstbib/lsst-dm.bib lsstbib/refs.bib lsstbib/refs_ads.bib
