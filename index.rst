@@ -100,3 +100,7 @@ Alert Stream Simulator
 
 Alert Database
 ~~~~~~~~~~~~~~
+
+
+.. bibliography:: local.bib lsstbib/books.bib lsstbib/lsst.bib lsstbib/lsst-dm.bib lsstbib/refs.bib lsstbib/refs_ads.bib
+    :style: lsst_aa
