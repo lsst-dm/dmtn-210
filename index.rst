@@ -309,13 +309,29 @@ In the case of the Alert Distribution System, most users are limited to only wor
 The only exception is superusers who are granted global access to do anything.
 These are administrative accounts which are only expected to be used by Rubin staff, and only in case of emergencies.
 
+1Password, Vault, and Passwords
+*******************************
+
+User's passwords are set through the RSP-Vault 1Password vault in the LSST-IT 1Password account.
+Each user gets a separate 1Password item with a name in the format "alert-stream idfint <username>", like "alert-stream idfint lasair-idint".
+
+A username can be set in the 1Password item, but this is purely descriptive; the password is the only thing that is used.
+
+The item uses a field named "generate_secrets_key" with a value of "alert-stream-broker <username>-password".
+Through Rubin Science Platform's 1Password secret machinery, this will automatically generate a value in the ``alert-stream-broker-secrets`` Kubernetes Secret named "<username>-password" which stores the user's password; this can then be fed in to Kafka's configuration.
+
+All most administrators really need to know, though, is:
+ - Each Kafka user needs to have a separate item in the RSP-Vault 1Password vault.
+ - The password stored in 1Password is authoritative.
+ - Passwords can be securely distributed using 1Password's 'Private Link' feature.
+ - The formatting of the 1Password item is persnickety and must be set exactly correctly.
+
 Authentication
 **************
 
 Users authenticate using SCRAM-SHA-512 authentication, which is a username and password-based protocol.
-The alert-stream-broker's `users.yaml`_ template configures each username, but lets passwords get generated automatically. These passwords are passed in to Kubernetes Secrets.
-
-The Secrets can then be read out using 1Password through RSP-Vault to get the raw username and password for each user.
+The alert-stream-broker's `users.yaml`_ template configures each username, but lets passwords get generated separately and receives them through Kubernetes Secrets.
+These passwords are then passed in to Kafka to configure the broker to expect them.
 
 Access Restrictions
 *******************
