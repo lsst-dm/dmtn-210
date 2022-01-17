@@ -1,5 +1,6 @@
 :tocdepth: 1
 
+
 .. Please do not modify tocdepth; will be fixed when a new Sphinx theme is shipped.
 
 .. sectnum::
@@ -82,6 +83,9 @@ pOn the Rubin Science Platform, Terraform is used to provision non-Kubernetes re
 
 Principal Components
 ====================
+
+The Alert
+.. image:: ArchitectureDiagram.png
 
 Strimzi Operator
 ----------------
