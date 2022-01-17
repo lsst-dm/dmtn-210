@@ -1,26 +1,17 @@
-:tocdepth: 1
-
+:tocdepth: 3
 
 .. Please do not modify tocdepth; will be fixed when a new Sphinx theme is shipped.
 
 .. sectnum::
-
-.. TODO: Delete the note below before merging new content to the master branch.
-
-.. note::
-
-   **This technote is not yet published.**
-
-   We describe the current implementation of the Rubin Alert Distribution System at the interim data facility.
-   An overview is provided of the system's concepts and components, and then each is described in detail.
-   This document aims to be a point-in-time record of what exists, and to explain implementation decisions made during construction.
-
 
 Overview
 ========
 
 Rubin's Alert Distribution System is implemented in the integration environment at the interim data facility (the "IDF").
 The implementation runs on the shared Rubin Science Platform Kubernetes cluster in the IDF.
+
+This document aims to be a point-in-time record of what exists, and to explain implementation decisions made during construction.
+An overview is provided of the system's concepts and components, and then each is described in detail.
 
 At the highest conceptual level, it is composed of an Apache Kafka :cite:`kafka` cluster, a Confluent Schema Registry :cite:`confluent-schema-registry`, software to generate simulated alerts, and an alert database implemenntation following the design laid out in DMTN-183 :cite:`DMTN-183`.
 
