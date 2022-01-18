@@ -285,6 +285,8 @@ The 2018 Strimzi blog post "Running Kafka on dedicated Kubernetes nodes" :cite:`
 
 .. _environments/deployments/science-platform/env/integration-gke.tfvars: https://github.com/lsst/idf_deploy/blob/a4361659854d078ab823ee915a1136bc0fbd65ff/environment/deployments/science-platform/env/integration-gke.tfvars#L49-L64
 
+.. _kafka-certificates:
+
 TLS Certificate
 ~~~~~~~~~~~~~~~
 
@@ -385,6 +387,9 @@ Strimzi Registry Operator
 The Strimzi Registry Operator :cite:`strimzi-registry-operator` is a Kubernetes Operator which defines a custom resource, ``StrimziSchemaRegistry``, and which creates and manages a deployment of Confluent Schema Registry in response to instances of that resource.
 The Operator is an application written and maintained by Rubin's SQuaRE team in the `lsst-sqre/strimzi-registry-operator`_ repository.
 
+The Strimzi Registry Operator's primary value to the Alert Distribution System is that it coordinates and synchornizes credentials used to access the Strimzi-managed Kafka cluster.
+The Operator is responsible for updating the deployed Schema Registry instance any time credentials are updated or changed, which can happen as a downstream consequence of changes to the Kafka cluster's configuration.
+
 The Operator has an associated Helm chart in the `strimzi-registry-operator chart`_ directory.
 This chart contains custom resource definitions, or CRDs.
 These CRDs must be installed cluster-wide at a consistent version, and so the first installation of this chart through Argo is particularly important.
@@ -395,6 +400,8 @@ This Docker container is automatically built in the `lsst-sqre/strimzi-registry-
 
 .. _lsst-sqre/strimzi-registry-operator: https://github.com/lsst-sqre/strimzi-registry-operator
 .. _strimzi-registry-operator chart: https://github.com/lsst-sqre/charts/tree/master/charts/strimzi-registry-operator
+
+.. _strimzi-registry-operator-deployment:
 
 Deployment
 ~~~~~~~~~~
@@ -433,7 +440,201 @@ Shrinking this capability set would be desirable in the future.
 .. _rbac.yaml: https://github.com/lsst-sqre/charts/blob/fb84ce842d3ad95714ee43b53601436a7ac86a95/charts/strimzi-registry-operator/templates/rbac.yaml
 
 Schema Registry
-----------------
+---------------
+
+The Schema Registry runs an instance of Confluent Schema Registry :cite:`confluent-schema-registry` which is a service that provides access to Avro schema definition documents.
+These Avro schemas are used by clients consuming alert data.
+The schemas provide instructions to Avro libraries on how to parse binary serialized alert data into in-memory structures, such as dictionaries in Python.
+
+Confluent Schema Registry uses a Kafka topic as its backing data store.
+The Registry itself is a lightweight HTTP API fronting this data in Kafka.
+
+The Schema Registry is currently running at https://alert-schemas-int.lsst.cloud/.
+For example, to retrieve schema ID 1, you can issue an HTTP GET to https://alert-schemas-int.lsst.cloud/schemas/ids/1.
+
+The Schema Registry for the Alert Distribution System is implemented with a Helm chart in the charts repository, `alert-stream-schema-registry`_.
+This chart defines five resources:
+
+1. A ``StrimziSchemaRegistry`` instance which is used by the Strimzi Registry Controller, creating a Deployment of the Schema Registry, in `schema-registry-server.yaml`_.
+2. A ``KafkaTopic`` used to store schema data inside the Kafka cluster, in `schema-registry-topic.yaml`_.
+3. A ``KafkaUser`` identity used by the Schema Registry instance to connect to the Kafka cluster, in `schema-registry-user.yaml`_.
+4. An Nginx ``Ingress`` which provides read-only access to the Schema Registry from over the public internet in `ingress.yaml`_.
+5. A ``Job`` which synchronizes the latest version of the alert packet schema into the Schema Registry, in `sync-schema-job.yaml`_.
+
+.. _alert-stream-schema-registry: https://github.com/lsst-sqre/charts/tree/master/charts/alert-stream-schema-registry
+.. _schema-registry-server.yaml: https://github.com/lsst-sqre/charts/blob/fb84ce842d3ad95714ee43b53601436a7ac86a95/charts/alert-stream-schema-registry/templates/schema-registry-server.yaml
+.. _schema-registry-topic.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/schema-registry-topic.yaml
+.. _schema-registry-user.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/schema-registry-user.yaml
+.. _ingress.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/ingress.yaml
+.. _sync-schema-job.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/sync-schema-job.yaml
+
+These will each be described in detail now.
+
+StrimziSchemaRegistry instance
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This resource doesn't need much explanation.
+It has such a small definition that it can be included here in its entirety:
+
+.. code-block:: yaml
+
+   apiVersion: roundtable.lsst.codes/v1beta1
+   kind: StrimziSchemaRegistry
+   metadata:
+     name: {{ .Values.name }}
+   spec:
+     strimzi-version: {{ .Values.strimziAPIVersion }}
+     listener: internal
+
+Perhaps the only notable thing here is the ``listener`` field.
+This must exactly match an mTLS-based listener in the associated Kafka cluster.
+The "associated Kafka cluster" is the one named in the ``SSR_CLUSTER_NAME`` value in the Strimzi Registry Operator's configuration, as mentioned in :ref:`strimzi-registry-operator-deployment`.
+
+An "mTLS-based listener" means one that uses ``tls: true`` and has an authentication ``type: tls``; see also :ref:`listeners`.
+
+Schema Registry Topic and User
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Schema Registry stores all of its underlying schema data in a Kafka topic, which is configured in `schema-registry-topic.yaml`_.
+This is set to use 3 replicas for durability, but is otherwise left to almost entirely use defaults.
+This topic is automatically created by the Strimzi Topic Operator.
+
+The Schema Registry needs a Kafka User identity as well to communicate with the Kafka cluster.
+This user is configured in `schema-registry-user.yaml`_, which primarily is devoted to granting the correct permissions for the user to access the Schema Registry topic.
+
+Schema Registry Ingress
+~~~~~~~~~~~~~~~~~~~~~~~
+
+The Schema Registry needs to be internet-accessible because its schemas are used by Rubin's Community Brokers when they are processing the alert stream.
+Schemas are necessary for parsing each of the alert packets in the stream, and the Schema Registry is the authoritative source for schemas.
+
+An Ingress is a Kubernetes resource which provides this external access to an internal system.
+The Rubin Science Platform uses Nginx as the Ingress implementation :cite:`nginx`.
+
+Authorization
+*************
+
+The Schema Registry exposes an HTTP interface for access of this kind; however, it has no native support for access restrictions, so anyone who can reach it can create, modify, or even delete any schema data.
+These features cannot be exposed to the general internet safely.
+
+Therefore, the Ingress needs to *also* screen traffic to only permit read-only access.
+This is accomplished through an inline Nginx "configuration snippet," which is a fragment of Nginx's own configuration language which gets injected into the Ingress's configuration.
+This snippet denies all non-GET requests, and is configured through an annotation on the Ingress resource:
+
+.. code-block:: yaml
+
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      # Forbid everything except GET since this should be a read-only ingress
+      # to the schema registry.
+      limit_except GET {
+        deny all;
+      }
+
+Since all of the write-related APIs are behind non-GET methods, this seems to do an adequate job of protecting the Schema Registry from abuse.
+
+TLS and Hostnames
+*****************
+
+The typical way that ingresses work is through *merging*.
+In this framework, all services share a hostname, and traffic is routed based on the path in the URL of an HTTP request.
+
+This isn't possible for the Schema Registry since it lacks a universal URL path prefix that can distinguish the requests.
+We can't have the ingress rewrite requests because the Schema Registry API clients generally don't have the ability to insert a leading path component either.
+This means that the Schema Registry must run under its own dedicated hostname.
+
+Since it runs on a separate hostname, it additionally needs to handle TLS separately.
+This is done by configuring the Ingress with an annotation that requests a Lets Encrypt TLS certificate from cert-manager.
+This is the same system that is used to provision TLS certificates for the Kafka broker (see :ref:`kafka-certificates`).
+
+This explains the 'cert-manager.io/cluster-issuer' annotation in the ingress, which is set to the name of a Cluster Issuer already available on the Rubin Science Platform Kubernetes cluster:
+
+.. code-block:: yaml
+
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: cert-issuer-letsencrypt-dns
+
+It also explains the ``spec.tls.secretName`` value in `ingress.yaml`_:
+
+.. code-block:: yaml
+
+  spec:
+    tls:
+    - hosts: [{{ .Values.hostname | quote }}]
+      secretName: "{{ .Values.name }}-tls"
+
+For more on this, see the cert-manager documentation on `Securing Ingress Resources <https://cert-manager.io/docs/usage/ingress/>`__.
+
+Schema Synchronization Job
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Once the Schema Registry is running, we need to insert the right versions of the Rubin alert schema into the registry.
+
+This is done through a Kubernetes "Job", which is a set of instructions to run certain commands inside a container in the Kubernetes cluster. That Job is defined in `sync-schema-job.yaml`_.
+
+The schema synchronization job is a wrapper around a script in the `lsst/alert_packet`_ repository.
+The script is named ``syncLatestSchemaToRegistry.py``, and its name says it all: it takes the latest (and **only** the latest) schema checked into the `lsst/alert_packet`_ repository and submits it to a Schema Registry.
+
+Kubernetes Jobs need to be wrapped in containers, so this script is bundled into a Docker container in the `lsst/alert_packet`_ continuous integration system.
+In particular, a Github Workflow named `build_sync_container.yml`_ builds the alert_packet Python package and sets up the script in a container, and then pushes the built container to Dockerhub in the ``lsstdm/lsst_alert_packet`` repository.
+
+Versioning
+**********
+
+The built Docker container is tagged with the Git ref that triggered the build. This can be a git tag (``w.2021.50``), or a branch name used in a Pull Request (``tickets/DM-32743``), which can be later referenced as the tag to use when running the Kubernetes Job to sync schemas.
+
+This value is passed in as the ``schemaSync.image.tag`` value when configuring the `alert-stream-schema-registry`_ chart.
+Note that this version is probably **not** the version of the Alert Packet Schema that will be synchronized since the version of the alert_packet repository is independent from that of the schemas.
+
+When the Job runs
+*****************
+
+The Job runs whenever the alert-stream-broker Phalanx service is synchronized in Argo CD.
+This means that it is run on essentially any change to any of the components of the entire Alert Distribution System, not just when the alert packet schema changes.
+
+This is perhaps unnecessarily often, but it is not harmful since schema writes are idempotent: if a schema submitted to the registry exactly matches an existing schema, then no change is made.
+
+
+.. _lsst/alert_packet: https://github.com/lsst/alert_packet
+.. _build_sync_container.yml: https://github.com/lsst/alert_packet/blob/main/.github/workflows/build_sync_container.yml
+
+A note on the response format from the registry
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Schema Registry responds to a request for a particular schema (for example, https://alert-schemas-int.lsst.cloud/schemas/ids/1) with a JSON payload.
+The JSON payload's shape is:
+
+.. code-block:: json
+
+   {
+      "schema": "<schema-document-as-a-string>",
+   }
+
+Avro schema documents are JSON objects already, but the Schema Registry flattens this JSON object into a single string, adding escape backslashes in front of each double-quote character, and stripping it of whitespace.
+So, for example, this schema:
+
+.. code-block:: json
+
+  {
+    "type": "record",
+     "namespace": "com.example",
+     "name": "FullName",
+     "fields": [
+       { "name": "first", "type": "string" },
+       { "name": "last", "type": "string" }
+     ]
+  }
+
+would be encoded like this:
+
+.. code-block:: json
+
+   {
+      "schema": "{\"type\":\"record\",\"namespace\":\"com.example\",\"name\":\"FullName\",\"fields\":[{\"name\":\"first\",\"type\":\"string\"},{\"name\":\"last\",\"type\":\"string\"}]}"
+   }
+
+This can be quite confusing, but to use the schema it must be doubly-deserialized: first the outer response needs to be parsed, then the value under the ``"schema"`` key must be parsed.
+
 
 Alert Stream Simulator
 ----------------------
