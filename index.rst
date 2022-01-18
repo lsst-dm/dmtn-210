@@ -382,7 +382,57 @@ In the ``idfint`` environment, each user only gets access to the "alerts-simulat
 Strimzi Registry Operator
 -------------------------
 
-Strimzi Registry
+The Strimzi Registry Operator :cite:`strimzi-registry-operator` is a Kubernetes Operator which defines a custom resource, ``StrimziSchemaRegistry``, and which creates and manages a deployment of Confluent Schema Registry in response to instances of that resource.
+The Operator is an application written and maintained by Rubin's SQuaRE team in the `lsst-sqre/strimzi-registry-operator`_ repository.
+
+The Operator has an associated Helm chart in the `strimzi-registry-operator chart`_ directory.
+This chart contains custom resource definitions, or CRDs.
+These CRDs must be installed cluster-wide at a consistent version, and so the first installation of this chart through Argo is particularly important.
+
+The Operator chart has almost no configuration.
+The only options are to configure the Docker repository and tag which identifies a Docker container that runs the Strimzi Registry Operator application.
+This Docker container is automatically built in the `lsst-sqre/strimzi-registry-operator`_ repository's continuous integration system and is published to the ``lsstsqre/strimzi-registry-operator`` repository on Docker Hub.
+
+.. _lsst-sqre/strimzi-registry-operator: https://github.com/lsst-sqre/strimzi-registry-operator
+.. _strimzi-registry-operator chart: https://github.com/lsst-sqre/charts/tree/master/charts/strimzi-registry-operator
+
+Deployment
+~~~~~~~~~~
+
+The Strimzi Registry Operator deployment runs an instance of the Strimzi Registry Operator container in Kubernetes.
+It configures the application through environment variables ``SSR_CLUSTER_NAME`` and ``SSR_NAMESPACE``:
+
+.. code-block:: yaml
+
+     containers:
+        - name: operator
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: Always
+          env:
+          - name: SSR_CLUSTER_NAME
+            value: "{{ .Values.clusterName }}"
+          - name: SSR_NAMESPACE
+            value: "{{ .Values.watchNamespace }}"
+          command: ["kopf"]
+          args: ["run",  "--standalone",  "-m",  "strimziregistryoperator.handlers",  "--namespace",  "{{ .Values.watchNamespace }}",  "--verbose"]
+
+These imply that the registry operator can only watch a *single* namespace and Kafka cluster at a time.
+This is currently a limitation of the Strimzi Registry Operator application.
+If multiple namespaces or Kafka Clusters need to be watched (perhaps because of multitenancy of the Kubernetes cluster hosting the Alert Distribution System) then multiple Strimzi Registry Operators will need to be run.
+
+Kubernetes Permissions
+~~~~~~~~~~~~~~~~~~~~~~
+
+In order to create Schema Registry instances, the Strimzi Registry Operator needs a set of cluster-wide permissions.
+These are defined in the `rbac.yaml`_ template in the Strimzi Registry Operator chart, and include the power to read and modify Secrets, Services, Deployments, and ConfigMaps.
+
+This is a fairly broad range of capabilities, and in reality that Strimzi Registry Operator only needs those capabilities within the namespace that it is watching.
+But there doesn't seem to be a simple way to limit the Operator's scope in that fashion, so it simply gets a cluster-wide scope.
+Shrinking this capability set would be desirable in the future.
+
+.. _rbac.yaml: https://github.com/lsst-sqre/charts/blob/fb84ce842d3ad95714ee43b53601436a7ac86a95/charts/strimzi-registry-operator/templates/rbac.yaml
+
+Schema Registry
 ----------------
 
 Alert Stream Simulator
