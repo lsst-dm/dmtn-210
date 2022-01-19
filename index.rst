@@ -50,12 +50,8 @@ The templates are called _Charts_, and provide a flexible way to represent commo
 
 For the Rubin IDF, all charts are defined in the `lsst-sqre/charts`_ repository.
 
-.. _lsst-sqre/charts: https://github.com/lsst-sqre/charts
-
 Charts are reified into infrastructure using a set of *values* which populate the templates.
 For the Rubin IDF, the values to be used are defined in the `lsst-sqre/phalanx`_ repository.
-
-.. _lsst-sqre/phalanx: https://github.com/lsst-sqre/phalanx
 
 These two repositories are part of the Phalanx system, described in SQR-056 :cite:`SQR-056` and at `phalanx.lsst.io <https://phalanx.lsst.io/>`__.
 
@@ -73,8 +69,6 @@ Terraform :cite:`terraform` is a tool for provisioning infrastructure through co
 On the Rubin Science Platform, Terraform is used to provision non-Kubernetes resources, such as Google Cloud Storage buckets and account permissions for applications running inside Kubernetes to access Google Cloud Platform APIs.
 
 Terraform source code resides in the `lsst/idf_deploy`_ repository.
-
-.. _lsst/idf_deploy: https://github.com/lsst/idf_deploy
 
 Principal Components
 ====================
@@ -128,7 +122,7 @@ Kakfa Cluster
 -------------
 
 The Kafka Cluster is at the heart of the Alert Distribution System, and is defined in terms of custom Strimzi resources.
-These resources are defined with Helm templates in the `alert-stream-broker <https://github.com/lsst-sqre/charts/tree/master/charts/alert-stream-broker>`__ chart.
+These resources are defined with Helm templates in the `alert-stream-broker`_ chart.
 
 The chart has the following subresources:
 
@@ -136,12 +130,6 @@ The chart has the following subresources:
  2. A ``Certificate`` resource used to provision a TLS certificate for the Kafka cluster's external address, defined in `certs.yaml`_.
  3. A list of ``KafkaUsers`` used to create client identities that can access the Kafka Cluster, defined in `users.yaml`_ and `superusers.yaml`_.
  4. A ``VaultSecret`` used to store superuser credentials in Vault, which provides gated human access to the credential values through 1Password; see the `Phalanx Documentation on VaultSecrets <https://phalanx.lsst.io/service-guide/add-a-onepassword-secret.html>`__ for more details. This is defined in `vault_secret.yaml`_.
-
-.. _kafka.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-broker/templates/kafka.yaml
-.. _certs.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-broker/templates/certs.yaml
-.. _users.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-broker/templates/users.yaml
-.. _superusers.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-broker/templates/superusers.yaml
-.. _vault_secret.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-broker/templates/vault_secret.yaml
 
 These will each now be explained in further detail.
 
@@ -171,11 +159,9 @@ Because these are ``internal``-typed listeners, they are only accessible within 
 
 The third listener is an external one, meaning that it is accessible over the internet.
 It is configured to be ``loadbalancer``-typed, which tells the Strimzi Operator that we would like a `Kubernetes Service with a type of LoadBalancer`_ to be provisioned on our behalf.
-This, in turn, `triggers creation`_ of a Google Cloud Network Load Balancer, which has a public IP address which can be used to connect to the service.
+This, in turn, triggers creation of a `Google Cloud Network Load Balancer`_, which has a public IP address which can be used to connect to the service.
 There are two important things to note about this system.
 
-.. _Kubernetes Service with a type of LoadBalancer:  https://kubernetes.io/docs/concepts/services-networking/service/#loadbalancer
-.. _triggers creation: https://cloud.google.com/kubernetes-engine/docs/concepts/service#services_of_type_loadbalancer
 
 
 First, it is fairly specific to Google Cloud Platform; an implementation of the Alert Distribution System on a different Kubernetes platform might require a different strategy for this external listener.
@@ -198,8 +184,6 @@ Note that this needs to be done for *each broker replica*, in addition to the cl
 "Accessing Kafka" :cite:`accessing-kafka` is a useful reference to explain why this is necessary in greater detail.
 
 An example of this pinning process can be found in Phalanx's set of values for the ``idfint`` environment of alert-stream-broker (`values-idfint.yaml`_), where the external listener's IP addresses have been pinned explicitly:
-
-.. _values-idfint.yaml: https://github.com/lsst-sqre/phalanx/blob/66d2f3a2ae18efc79ebae7eb2763bf7e866e84a6/services/alert-stream-broker/values-idfint.yaml
 
 .. code-block:: yaml
 
@@ -282,8 +266,6 @@ The Kafka node pool is labeled ``kafka=ok``; this label is used for all taints, 
 This node pool is created using Terraform in the `environments/deployments/science-platform/env/integration-gke.tfvars`_ file.
 
 The 2018 Strimzi blog post "Running Kafka on dedicated Kubernetes nodes" :cite:`strimzi-kafka-nodes` provides a good guide on how this is implemented in more detail.
-
-.. _environments/deployments/science-platform/env/integration-gke.tfvars: https://github.com/lsst/idf_deploy/blob/a4361659854d078ab823ee915a1136bc0fbd65ff/environment/deployments/science-platform/env/integration-gke.tfvars#L49-L64
 
 .. _kafka-certificates:
 
@@ -398,9 +380,6 @@ The Operator chart has almost no configuration.
 The only options are to configure the Docker repository and tag which identifies a Docker container that runs the Strimzi Registry Operator application.
 This Docker container is automatically built in the `lsst-sqre/strimzi-registry-operator`_ repository's continuous integration system and is published to the ``lsstsqre/strimzi-registry-operator`` repository on Docker Hub.
 
-.. _lsst-sqre/strimzi-registry-operator: https://github.com/lsst-sqre/strimzi-registry-operator
-.. _strimzi-registry-operator chart: https://github.com/lsst-sqre/charts/tree/master/charts/strimzi-registry-operator
-
 .. _strimzi-registry-operator-deployment:
 
 Deployment
@@ -437,7 +416,6 @@ This is a fairly broad range of capabilities, and in reality that Strimzi Regist
 But there doesn't seem to be a simple way to limit the Operator's scope in that fashion, so it simply gets a cluster-wide scope.
 Shrinking this capability set would be desirable in the future.
 
-.. _rbac.yaml: https://github.com/lsst-sqre/charts/blob/fb84ce842d3ad95714ee43b53601436a7ac86a95/charts/strimzi-registry-operator/templates/rbac.yaml
 
 Schema Registry
 ---------------
@@ -460,13 +438,6 @@ This chart defines five resources:
 3. A ``KafkaUser`` identity used by the Schema Registry instance to connect to the Kafka cluster, in `schema-registry-user.yaml`_.
 4. An Nginx ``Ingress`` which provides read-only access to the Schema Registry from over the public internet in `ingress.yaml`_.
 5. A ``Job`` which synchronizes the latest version of the alert packet schema into the Schema Registry, in `sync-schema-job.yaml`_.
-
-.. _alert-stream-schema-registry: https://github.com/lsst-sqre/charts/tree/master/charts/alert-stream-schema-registry
-.. _schema-registry-server.yaml: https://github.com/lsst-sqre/charts/blob/fb84ce842d3ad95714ee43b53601436a7ac86a95/charts/alert-stream-schema-registry/templates/schema-registry-server.yaml
-.. _schema-registry-topic.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/schema-registry-topic.yaml
-.. _schema-registry-user.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/schema-registry-user.yaml
-.. _ingress.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/ingress.yaml
-.. _sync-schema-job.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/sync-schema-job.yaml
 
 These will each be described in detail now.
 
@@ -595,9 +566,6 @@ This means that it is run on essentially any change to any of the components of 
 This is perhaps unnecessarily often, but it is not harmful since schema writes are idempotent: if a schema submitted to the registry exactly matches an existing schema, then no change is made.
 
 
-.. _lsst/alert_packet: https://github.com/lsst/alert_packet
-.. _build_sync_container.yml: https://github.com/lsst/alert_packet/blob/main/.github/workflows/build_sync_container.yml
-
 A note on the response format from the registry
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -639,6 +607,100 @@ This can be quite confusing, but to use the schema it must be doubly-deserialize
 Alert Stream Simulator
 ----------------------
 
+The Alert Stream Simulator is a subsystem which publishes static sample alerts into the Alert Distribution System's Kafka broker.
+DMTN-149 :cite:`DMTN-149` describes the design of the Alert Stream Simulator, but in the context of using it as a standalone tool for community brokers, and emphasizes use of Docker Compose.
+The Alert Distribution System deploys this software on Kubernetes instead.
+That deployment requires a few additional components which will be described in this section.
+
+The simulator's software (particularly the ``rubin-alert-sim`` program) is in the `lsst-dm/alert-stream-simulator`_ repository.
+All of the Kubernetes deployment configuration for the simulator resides in the `alert-stream-simulator`_ Helm chart.
+
+Background on the simulator's two-step design
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Understanding the implementation requires understanding the general structure of the Alert Stream Simulator.
+
+The simulator uses a two-step process to publish alerts efficiently.
+First, alerts are *loaded* once, precomputing their serialization.
+Second, alerts are *replayed* continuously, copying their serialized data into a Kafka topic every 37 seconds.
+
+The loading process is implemented in the :command:`rubin-alert-sim create-stream` subcommand.
+It takes in a file of Avro-encoded alert data as input.
+It re-encodes the Avro alerts following the latest schema in the `lsst/alert_packet`_ package that it was built with and publishes them into a Kafka topic in Confluent Wire Format, optionally creating that topic if it doesn't already exist.
+It then exits.
+
+The replay process is implemented in the :command:`rubin-alert-sim play-stream` subcommand.
+This command consumes from a Kafka topic, pulling out all the Avro alerts from it, and copies them into a target topic.
+It repeats this in a loop every 37 seconds.
+
+Kubernetes Components
+~~~~~~~~~~~~~~~~~~~~~
+
+The Helm chart which installs the simulator has three components:
+
+1. A Job which runs the :command:`rubin-alert-sim create-stream` program, publishing alert packets into Kafka in a topic for later replay.
+2. A Deployment which runs the :command:`rubin-alert-sim play-stream` program, copying from the static topic into the "alerts-simulated" topic in Kafka.
+3. A KafkaUser and KafkaTopic which set up the Kafka resources used by each of the above. The Topic is only for the *replay* topic, *not* the static topic
+
+The load-data job
+*****************
+
+The Job that loads data runs each time the alert-stream-broker Phalanx service is synchronized with Argo.
+It is defined in `load-data-job.yaml`_.
+
+Because it's a Kubernetes Job managed by Argo, it must run on *every* sync of the alert-stream-broker, which means it needs to act idempotently.
+This is somewhat difficult to arrange with the design of the alert stream simulator.
+If done naively, it would append a new copy of the static alerts into a target topic, growing it each time.
+This would make the simulator gradually publish a simulated visit which was larger and larger.
+
+To avoid this problem, the load-data job always recreates the static topic, deleting it from Kafka before creating a new one.
+
+That means that the topic configuration unfortunately cannot be managed as a ``KafkaTopic`` resource through Strimzi, and all configuration has to be baked directly into the call made by the :command:`rubin-alert-stream create-stream` subcommand's code, which can be found `python/streamsim/creator.py <https://github.com/lsst-dm/alert-stream-simulator/blob/20b0380b61c46b667e42f171c41d65d4ee63b2ad/python/streamsim/creator.py#L78-L85>`__ in the `lsst-dm/alert-stream-simulator`_ repository.
+
+The load-data job is set up with credentials to access the Kafka broker via the KafkaUser resource's derived secrets created with Strimzi.
+
+The replay deployment
+*********************
+
+The simulator's replayer is relatively simple compared to the load-data job.
+
+It is concerned only with reading data from the topic created by the load-data job and copying it over into the alerts-simulated topic.
+The alert messages are not modified in any way, so (for example) their alert IDs and exposure timestamps will not be changed.
+
+The deployment uses the same KafkaUser as the load-data job for simplicity.
+
+KafkaTopic for replay
+*********************
+
+The KafkaTopic that is created as part of the alert-stream-simulator Helm chart is the replay topic which holds the copied alert stream.
+
+By default, this is set to have 2 replicas and be partitioned into 8 partitions.
+A maximum of 100GB and 7 days of replay data are retained inthe Kafka topic via the ``retention.ms`` and ``retention.bytes`` configuration fields of the kafka-topics.yaml file.
+
+KafkaUser for access
+********************
+
+The KafkaUser that is created as part of the alert-stream-simulator Helm chart is the identity that is used to connect to the Kafka topic by the load-data job as well as the replayer deployment.
+This identity is shared for simplicity; it certainly could be split up.
+
+The user is given limited permissions only over the static and replay topics, as well as permission to run as a consumer group, since that may be necessary in the replayer for parallelism (although presently the replayer only runs with a single instance in its deployment).
+
+Alert Data Source
+~~~~~~~~~~~~~~~~~
+
+The alert data which is used in the Alert Distribution System is baked directly in to the Docker container which runs the load-data job.
+This container is built using `a Dockerfile in the alert-stream-simulator repository <https://github.com/lsst-dm/alert-stream-simulator/blob/20b0380b61c46b667e42f171c41d65d4ee63b2ad/Dockerfile#L32>`__.
+
+The :command:`make datasets` command in that repository generates the sample alert data that will be used.
+This data is downloaded from https://lsst.ncsa.illinois.edu/~ebellm/sample_precursor_alerts/latest_single_visit_sample.avro and saved.
+
+Note that the load-data job always re-encodes this alert data using the latest alert schema in `lsst/alert_packet`_.
+This means that its behavior depends on the version of `lsst/alert_packet`_ that was used *when the container was built*
+
+It does not communicate directly with the schema registry to determine the correct schema ID.
+That ID needs to be passed in directly as a parameter to the job, managed through the 'schemaID' value passed in to the `alert-stream-simulator`_ Helm chart.
+
+
 Alert Database
 --------------
 
@@ -678,6 +740,56 @@ This isn't particularly consequential in practice, although it has a few downsid
 As an alternative, the Kubernetes Secrets could be reflected into multiple namespaces using a custom Operator.
 However, this would come at the cost of extra cluster-wide complexity.
 If multiple systems on the cluster would take advantage of such an operator, it might be worthwhile overall.
+
+.. Repositories:
+.. _lsst/idf_deploy: https://github.com/lsst/idf_deploy
+.. _lsst/alert_packet: https://github.com/lsst/alert_packet
+
+.. _lsst-sqre/charts: https://github.com/lsst-sqre/charts
+.. _lsst-sqre/phalanx: https://github.com/lsst-sqre/phalanx
+.. _lsst-sqre/strimzi-registry-operator: https://github.com/lsst-sqre/strimzi-registry-operator
+
+.. _lsst-dm/alert-stream-simulator: https://github.com/lsst-dm/alert-stream-simulator
+
+.. Phalanx config:
+.. _values-idfint.yaml: https://github.com/lsst-sqre/phalanx/blob/66d2f3a2ae18efc79ebae7eb2763bf7e866e84a6/services/alert-stream-broker/values-idfint.yaml
+
+.. Terraform config:
+.. _environments/deployments/science-platform/env/integration-gke.tfvars: https://github.com/lsst/idf_deploy/blob/a4361659854d078ab823ee915a1136bc0fbd65ff/environment/deployments/science-platform/env/integration-gke.tfvars#L49-L64
+
+.. Charts and files within them:
+
+..  alert-stream-broker:
+.. _alert-stream-broker: https://github.com/lsst-sqre/charts/tree/master/charts/alert-stream-broker
+.. _kafka.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-broker/templates/kafka.yaml
+.. _certs.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-broker/templates/certs.yaml
+.. _users.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-broker/templates/users.yaml
+.. _superusers.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-broker/templates/superusers.yaml
+.. _vault_secret.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-broker/templates/vault_secret.yaml
+
+.. alert-stream-simulator:
+.. _alert-stream-simulator: https://github.com/lsst-sqre/charts/tree/master/charts/alert-stream-simulator
+.. _load-data-job.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-simulator/templates/load-data-job.yaml
+
+.. strimzi-registry-operator:
+.. _strimzi-registry-operator chart: https://github.com/lsst-sqre/charts/tree/master/charts/strimzi-registry-operator
+.. _rbac.yaml: https://github.com/lsst-sqre/charts/blob/fb84ce842d3ad95714ee43b53601436a7ac86a95/charts/strimzi-registry-operator/templates/rbac.yaml
+
+.. alert-stream-schema-registry:
+.. _alert-stream-schema-registry: https://github.com/lsst-sqre/charts/tree/master/charts/alert-stream-schema-registry
+.. _schema-registry-server.yaml: https://github.com/lsst-sqre/charts/blob/fb84ce842d3ad95714ee43b53601436a7ac86a95/charts/alert-stream-schema-registry/templates/schema-registry-server.yaml
+.. _schema-registry-topic.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/schema-registry-topic.yaml
+.. _schema-registry-user.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/schema-registry-user.yaml
+.. _ingress.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/ingress.yaml
+.. _sync-schema-job.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/sync-schema-job.yaml
+
+.. Miscellaneous
+.. Alert packet build job
+.. _build_sync_container.yml: https://github.com/lsst/alert_packet/blob/main/.github/workflows/build_sync_container.yml
+
+.. External docs:
+.. _Kubernetes Service with a type of LoadBalancer:  https://kubernetes.io/docs/concepts/services-networking/service/#loadbalancer
+.. _Google Cloud Network Load Balancer: https://cloud.google.com/kubernetes-engine/docs/concepts/service#services_of_type_loadbalancer
 
 
 .. .. rubric:: References
