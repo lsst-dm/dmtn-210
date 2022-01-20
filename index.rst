@@ -850,10 +850,9 @@ The Helm template leaves the details of Gafaelfawr authorization implementation 
     gafaelfawrAuthQuery: "scope=read:alertdb"
 
 This ``gafaelfawrAuthQuery`` value restricts access to users who have the "read:alertdb" scope.
-That set of users is, in turn, defined in `Gafaelfawr's configuration in Phalanx <https://github.com/lsst-sqre/phalanx/blob/master/services/gafaelfawr/values-idfint.yaml#L25-L46>`__
+That set of users is, in turn, defined in `Gafaelfawr's configuration in Phalanx <https://github.com/lsst-sqre/phalanx/blob/master/services/gafaelfawr/values-idfint.yaml#L25-L46>`__:
 
 .. code-block:: yaml
-   :emphasize-lines: 23-25
 
   config:
     loglevel: "DEBUG"
