@@ -642,6 +642,8 @@ The Helm chart which installs the simulator has three components:
 2. A Deployment which runs the :command:`rubin-alert-sim play-stream` program, copying from the static topic into the "alerts-simulated" topic in Kafka.
 3. A KafkaUser and KafkaTopic which set up the Kafka resources used by each of the above. The Topic is only for the *replay* topic, *not* the static topic
 
+.. _load-data-job:
+
 The load-data job
 *****************
 
@@ -931,6 +933,25 @@ This isn't particularly consequential in practice, although it has a few downsid
 As an alternative, the Kubernetes Secrets could be reflected into multiple namespaces using a custom Operator.
 However, this would come at the cost of extra cluster-wide complexity.
 If multiple systems on the cluster would take advantage of such an operator, it might be worthwhile overall.
+
+Using Strimzi
+-------------
+
+All Kafka broker configuration, topic configuration (with one exception - see :ref:`load-data-job`), and user configuration is handled through Strimzi resources.
+
+This means that there is yet another layer of configuration indirection.
+Instead, the system could have been built from "bare" Kubernetes Deployments, ConfigMaps, and so on.
+
+But this would be very, very complex, and lifecycle management is particularly tricky.
+For example, when user credentials are rotated, the Kafka broker needs to be informed, and in some cases it needs to be restarted; this restart process needs to be done gradually, rolled out one-by-one across the cluster to avoid having complete downtime.
+Then, the credentials need to be bundled into Secrets to be passed to applications, and those applications likely would need to be restrated as well.
+Strimzi handles all of this complexity without any extra effort from Rubin developers.
+
+Internal networking complexity gets even harder, as Kafka requires several internal communication channels for management of the cluster.
+Strimzi handles this as well - and it's a particularly difficult thing to debug.
+
+Overall, while Strimzi adds additional abstraction and configuration to learn, it seems to have been clearly successful in managing the overall complexity of the system.
+We probably would have had to replicate a great deal of its functionality to build the Alert Distribution System from lower-level components.
 
 .. Repositories:
 .. _lsst/idf_deploy: https://github.com/lsst/idf_deploy
