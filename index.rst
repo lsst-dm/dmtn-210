@@ -1,4 +1,4 @@
-:tocdepth: 3
+:tocdepth: 2
 
 .. Please do not modify tocdepth; will be fixed when a new Sphinx theme is shipped.
 
@@ -704,6 +704,197 @@ That ID needs to be passed in directly as a parameter to the job, managed throug
 Alert Database
 --------------
 
+The Alert Database is responsible for storing an archival copy of all data published to the alert stream.
+Once Rubin is producing real data, this will be kept to maintain a durable history of what was sent to community brokers.
+For now, the Database merely stores the test alert data that has been published using the Alert Stream Simulator component of the Alert Distribution System.
+
+The Alert Database's design is described in DMTN-183 :cite:`DMTN-183`.
+The implementation follows that design document fairly closely, using `Google Cloud Storage Buckets`_ for the "object store" mentioned in the DMTN-183.
+
+As explained in DMTN-183, there are two software components to the Alert Database.
+
+An *ingester* consumes data from the published alert stream and copies it (along with any schemas referenced) into the backing object store.
+The ingester is implemented in the `lsst-dm/alert_database_ingester`_ repository.
+
+A *server* presents an HTTP API for accessing the ingested data over the internet.
+The server is implemented in the `lsst-dm/alert_database_server`_ repository.
+
+Both of these components are deployed in a single helm chart, `alert-database`_.
+This chart has the following templates:
+
+1. A Deployment and ServiceAccount for the ingester.
+2. A Deployment and ServiceAccount for the server.
+3. A KafkaUser for the ingester.
+4. A Service used to provide internal access to the server's Deployment.
+5. An Ingress used to provide external access to the Service.
+
+In addition, there are several components which are based on Google Cloud Platform rather than in Kubernetes, so they are configured with Terraform in the `environments/deployments/science-platform/alertdb`_ module:
+
+6. Cloud Storage buckets for storing alert packets and schemas.
+7. Cloud Service Accounts for reading and writing to the buckets.
+
+These will now be described in detail (albeit in a somewhat scrambled order).
+
+Service Accounts, Identity, and Permissions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ingester and server both need to communicate with Google Cloud to work with data inside private cloud storage buckets.
+In order to do this, they need API keys or credentials to prove their identities to Google Cloud.
+
+These credentials are retrieved through Google Kubernetes Engine's `Workload Identity`_ feature.
+An annotation on the Kubernetes ServiceAccount object references a Google Cloud Platform Service Account:
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: ServiceAccount
+   metadata:
+     name: {{ .Values.ingester.serviceAccountName }}
+     annotations:
+       # The following annotation connects the Kubernetes ServiceAccount to a GCP
+       # IAM Service Account, granting access to resources on GCP, via the
+       # "Workload Identity" framework.
+       #
+       # https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity
+       iam.gke.io/gcp-service-account: "{{ .Values.ingester.gcp.serviceAccountName }}@{{ .Values.ingester.gcp.projectID }}.iam.gserviceaccount.com"
+
+Then, when a Deployment references this ServiceAccount, Google Kubernetes Engine will automatically mount the proper Google Cloud credentials into the container so that API calls to Google Cloud will work.
+
+This can be confusing: there are two things both called "service accounts" here.
+
+One is the Kubernetes ServiceAccount, which is internally used in the Kubernetes cluster.
+This Kubernetes ServiceAccount can be granted to code running in a Pod, like a Deployment's container, allowing it to take certain actions.
+
+The second is the Google Cloud Platform Service Account.
+This is an identity associated with a Google Cloud project; it is intended to be an identity representing a machine user.
+
+The Workload Identity feature allows for some degree of translation between these two things: the Kubernetes Cluster will permit the linked Kubernetes ServiceAccount to get credentials to act as the linked GCP Service Account.
+
+The permissions granted to the GCP Service Account are managed in Terraform in the `environments/deployments/science-platform/alertdb`_ module.
+Note that Workload Identity requires careful coordination between this Terraform configuration and the Helm configuration used in Kubernetes.
+The Terraform configuration must have the correct Kubernetes Namespace, and the correct Kubernetes ServiceAccount name, in order for this to work; defaults for those are set in the `variables.tf file <https://github.com/lsst/idf_deploy/blob/a4361659854d078ab823ee915a1136bc0fbd65ff/environment/deployments/science-platform/alertdb/variables.tf#L29-L39>`__ but they may be overridden through `per-environment tfvars files <https://github.com/lsst/idf_deploy/blob/a4361659854d078ab823ee915a1136bc0fbd65ff/environment/deployments/science-platform/env/integration-alertdb.tfvars#L9-L12>`__.
+
+The actual binding happens via a "google_service_account_iam_binding" resource - one for the `writer identity <https://github.com/lsst/idf_deploy/blob/a4361659854d078ab823ee915a1136bc0fbd65ff/environment/deployments/science-platform/alertdb/main.tf#L69-L75>`__ (used by the ingester) and one for the `reader identity <https://github.com/lsst/idf_deploy/blob/a4361659854d078ab823ee915a1136bc0fbd65ff/environment/deployments/science-platform/alertdb/main.tf#L105-L111>`__ (used by the server).
+
+Storage Buckets
+~~~~~~~~~~~~~~~
+
+Alerts and schemas could, in theory, be stored in a single Cloud Storage bucket.
+However, they are stored in two separate buckets because this simplifies cleanup policies which manage the size of the integration testing version of the alert database.
+
+In production, we never want to delete any data that has been published, of course.
+But in the integration environment, where we are only publishing simulated data without any scientific value, there is no benefit to storing many copies of simulated data forever, so we delete data after several days.
+
+One simple way to accomplish this is through Google Cloud Storage's "`Lifecycle Rules`_".
+These apply a rule, like deleting every object over a certain age, automatically and without extra cost.
+These rules can only be applied, however, to *all* objects in a bucket, not selectively.
+
+We don't want to purge old schemas though since a single schema will typically be used for many, many weeks.
+Only alert packets should be deleted.
+This leads to the two-bucket design.
+
+One bucket of alert packets is set up to `automatically delete old alerts <https://github.com/lsst/idf_deploy/blob/a4361659854d078ab823ee915a1136bc0fbd65ff/environment/deployments/science-platform/alertdb/main.tf#L10-L30>`__.
+A second bucket of alert schemas is set up as a `vanilla bucket without any lifecycle rules <https://github.com/lsst/idf_deploy/blob/a4361659854d078ab823ee915a1136bc0fbd65ff/environment/deployments/science-platform/alertdb/main.tf#L32-L40>`__.
+
+An additional wrinkle of complexity is that these Terraform-generated buckets have automatically generated names in order to ensure uniqueness.
+The bucket names therefore can only be passed into the ingester and server deployments once Terraform has been run to create the buckets.
+They can be retrieved through the Google Cloud console.
+Their names are prefixed with 'rubin-alertdb' but the linked Terraform source code shows more details.
+
+Ingester
+~~~~~~~~
+
+The ingester has a Deployment (in `ingester-deployment.yaml`_) and a ServiceAccount (in `ingester-serviceaccount.yaml`_).
+The Deployment uses the ServiceAccount to assert an identity that it uses to make API calls to Google Cloud when storing object in Google Cloud Storage Buckets.
+That ServiceAccount needs permissions to write objects to the alert packet and schema buckets.
+
+The ingester deployment also references secrets generated through Strimzi which allow the ingester to connect to Kafka.
+
+The connects as well to the Schema Registry, so it receives a URL for that connection.
+It uses the public URL for this, which means that it (inefficiently) reaches out to the internet and returns back through an ingress.
+This is done primarily for simplicity; the round trip cost is only paid once when the ingester first launches, and then the response is cached for the entire runtime of the ingester.
+
+The deployment has a lot of configuration that needs to be explicitly specified in the `values-idfint.yaml`_ file, such as the (Kubernetes) ServiceAccount name and the Google Cloud Platform project ID.
+
+Server
+~~~~~~
+
+The server has a Deployment (in `server-deployment.yaml`_) and a ServiceAccount (in `server-serviceaccount.yaml`_).
+The Deployment uses the ServiceAccount to assert an identity that it uses to make API calls to Google Cloud when storing object in Google Cloud Storage Buckets.
+That ServiceAccount needs permissions to read objects from the alert packet and schema buckets.
+
+The server also runs a health check endpoint, at /v1/health, which is used by Kubernetes to tell when the container is successfully up and running.
+
+Aside from that, the server is almost a transparent proxy for requests to Google Cloud.
+It caches responses from the schema bucket for efficiency, and it decompresses the gzipped alert packets out of the storage bucket.
+
+Ingress (and Service)
+~~~~~~~~~~~~~~~~~~~~~
+
+The Ingress (in `alert-database/templates/ingress.yaml`_) provides external access to the Alert Database server.
+In order to do so, we also need a Service, which is a Kubernetes abstraction which allows a Deployment to be targettable by an Ingress.
+
+The Ingress for the Alert Database is set up to accept requests on a URL prefix.
+For the IDF integration environment, that means that requests to "https://data-int.lsst.cloud/alertdb" are routed to the Alert Database server.
+
+Requests are gated with authorization via Gafaelfawr, the Rubin project's general auth gateway.
+The Helm template leaves the details of Gafaelfawr authorization implementation (in particular, the Gafaelfawr auth query string to use) undefined; the actual important values are contained in `values-idfint.yaml`_:
+
+.. code-block:: yaml
+
+  ingress:
+    enabled: true
+    host: "data-int.lsst.cloud"
+    gafaelfawrAuthQuery: "scope=read:alertdb"
+
+This ``gafaelfawrAuthQuery`` value restricts access to users who have the "read:alertdb" scope.
+That set of users is, in turn, defined in `Gafaelfawr's configuration in Phalanx <https://github.com/lsst-sqre/phalanx/blob/master/services/gafaelfawr/values-idfint.yaml#L25-L46>`__
+
+.. code-block:: yaml
+   :emphasize-lines: 23-25
+
+  config:
+    loglevel: "DEBUG"
+    host: "data-int.lsst.cloud"
+    databaseUrl: "postgresql://gafaelfawr@localhost/gafaelfawr"
+
+    github:
+      clientId: "0c4cc7eaffc0f89b9ace"
+
+    # Allow access by GitHub team.
+    groupMapping:
+      "admin:provision":
+        - "lsst-sqre-square"
+      "exec:admin":
+        - "lsst-sqre-square"
+      "exec:notebook":
+        - "lsst-ops-panda"
+        - "lsst-sqre-square"
+        - "lsst-sqre-friends"
+      "exec:portal":
+        - "lsst-ops-panda"
+        - "lsst-sqre-square"
+        - "lsst-sqre-friends"
+      "read:alertdb":
+        - "lsst-sqre-square"
+        - "lsst-sqre-friends"
+      "read:image":
+        - "lsst-ops-panda"
+        - "lsst-sqre-square"
+        - "lsst-sqre-friends"
+      "read:tap":
+        - "lsst-ops-panda"
+        - "lsst-sqre-square"
+        - "lsst-sqre-friends"
+
+The format used in Gafaelfawr's configuration is to specify GitHub Teams that can have access.
+In this case, it's the members of the `lsst-sqre organization <https://github.com/lsst-sqre/>`__'s "`square <https://github.com/orgs/lsst-sqre/teams/square/members>`__" and "`friends <https://github.com/orgs/lsst-sqre/teams/friends/members>`__" teams.
+
+New teams can be added by modifying this Gafaelfawr configuration, and new users can be granted access by adding them to those teams.
+
+An authorized user can thus gain access to the alerts by going through a redirecting URL.
+For example, to view the schema with ID 1 (which is at https://data-int.lsst.cloud/alertdb/v1/schemas/1), a user could be directed to https://data-int.lsst.cloud/login?rd=https://data-int.lsst.cloud/alertdb/v1/schemas/1 .
+
 Design Decisions
 ================
 
@@ -718,7 +909,7 @@ All Strimzi and Kubernetes resources reside in the same namespace, with the exce
 This is done because it's the simplest way to allow internal authentication to the Kafka cluster using Kubernetes Secrets.
 
 The Strimzi Operator creates Kubernetes Secrets for each ``KafkaUser`` associated with a Kafka cluster that it manages.
-These Secrets hold all of the data required for a Kafka client to connect to the broker: TLS certificates, usernames, passswords - anything needed for a particular authentication mechanism.
+These Secrets hold all of the data required for a Kafka client to connect to the broker: TLS certificates, usernames, passwords - anything needed for a particular authentication mechanism.
 
 The Secrets are created automatically, and will be updated or rotated automatically if the Kafka Cluster is changed.
 In addition, they can be securely passed in to application code using Kubernetes' primitives for secret management, which gives us confidence that access is safe.
@@ -750,12 +941,15 @@ If multiple systems on the cluster would take advantage of such an operator, it 
 .. _lsst-sqre/strimzi-registry-operator: https://github.com/lsst-sqre/strimzi-registry-operator
 
 .. _lsst-dm/alert-stream-simulator: https://github.com/lsst-dm/alert-stream-simulator
+.. _lsst-dm/alert_database_ingester: https://github.com/lsst-dm/alert_database_ingester/
+.. _lsst-dm/alert_database_server: https://github.com/lsst-dm/alert_database_server/
 
 .. Phalanx config:
 .. _values-idfint.yaml: https://github.com/lsst-sqre/phalanx/blob/66d2f3a2ae18efc79ebae7eb2763bf7e866e84a6/services/alert-stream-broker/values-idfint.yaml
 
 .. Terraform config:
 .. _environments/deployments/science-platform/env/integration-gke.tfvars: https://github.com/lsst/idf_deploy/blob/a4361659854d078ab823ee915a1136bc0fbd65ff/environment/deployments/science-platform/env/integration-gke.tfvars#L49-L64
+.. _environments/deployments/science-platform/alertdb: https://github.com/lsst/idf_deploy/blob/a4361659854d078ab823ee915a1136bc0fbd65ff/environment/deployments/science-platform/alertdb/main.tf
 
 .. Charts and files within them:
 
@@ -783,6 +977,16 @@ If multiple systems on the cluster would take advantage of such an operator, it 
 .. _ingress.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/ingress.yaml
 .. _sync-schema-job.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/sync-schema-job.yaml
 
+.. _alert-database: https://github.com/lsst-sqre/charts/tree/master/charts/alert-database
+
+.. _ingester-deployment.yaml: https://github.com/lsst-sqre/charts/blob/98d37e2ace4e87c518796d92b239e74c5f1c2660/charts/alert-database/templates/ingester-deployment.yaml
+.. _ingester-serviceaccount.yaml: https://github.com/lsst-sqre/charts/blob/98d37e2ace4e87c518796d92b239e74c5f1c2660/charts/alert-database/templates/ingester-serviceaccount.yaml
+.. _server-deployment.yaml: https://github.com/lsst-sqre/charts/blob/98d37e2ace4e87c518796d92b239e74c5f1c2660/charts/alert-database/templates/server-deployment.yaml
+.. _server-serviceaccount.yaml: https://github.com/lsst-sqre/charts/blob/98d37e2ace4e87c518796d92b239e74c5f1c2660/charts/alert-database/templates/server-serviceaccount.yaml
+.. _alert-database/templates/ingress.yaml: https://github.com/lsst-sqre/charts/blob/98d37e2ace4e87c518796d92b239e74c5f1c2660/charts/alert-database/templates/ingress.yaml
+.. _alert-database/templates/kafka-user.yaml: https://github.com/lsst-sqre/charts/blob/98d37e2ace4e87c518796d92b239e74c5f1c2660/charts/alert-database/templates/kafka-user.yaml
+.. _alert-database/templates/service.yaml: https://github.com/lsst-sqre/charts/blob/98d37e2ace4e87c518796d92b239e74c5f1c2660/charts/alert-database/templates/service.yaml
+
 .. Miscellaneous
 .. Alert packet build job
 .. _build_sync_container.yml: https://github.com/lsst/alert_packet/blob/main/.github/workflows/build_sync_container.yml
@@ -790,6 +994,9 @@ If multiple systems on the cluster would take advantage of such an operator, it 
 .. External docs:
 .. _Kubernetes Service with a type of LoadBalancer:  https://kubernetes.io/docs/concepts/services-networking/service/#loadbalancer
 .. _Google Cloud Network Load Balancer: https://cloud.google.com/kubernetes-engine/docs/concepts/service#services_of_type_loadbalancer
+.. _Google Cloud Storage Buckets: https://cloud.google.com/storage
+.. _Workload Identity: https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity
+.. _Lifecycle Rules: https://cloud.google.com/storage/docs/lifecycle
 
 
 .. .. rubric:: References
