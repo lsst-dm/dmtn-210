@@ -86,7 +86,9 @@ The Alert Distribution System has six principal components:
 
    A diagram of the principal components and their relationships.
 
-Each of these components will now be described in more detail.
+Each of the internal components will now be described in more detail.
+In addition to these internal components, there are the clients which access the Alert Distribution System. These are described in :ref:`clients`.
+
 
 Strimzi Operator
 ----------------
@@ -282,6 +284,8 @@ The Rubin Science Platform's DNS is managed manually by the SQuaRE team in Route
 The most important part of the ``Certificate`` resource is the ``dnsNames`` field which requests TLS certificates for specific hostnames.
 In our Kafka installation, we need multiple such hostnames: one for each individual broker (``alert-stream-int-broker-0-int.lsst.cloud``, ``alert-stream-int-broker-1-int.lsst.cloud``, etc), and one for the cluster-wide bootstrap address (``alert-stream-int.lsst.cloud``).
 As explained in :ref:`listeners`, these can only be fully configured once an IP address for an external load balancer has been provisioned, so this resource may fail when first created.
+
+.. _kafka-users:
 
 Users and Superusers
 ~~~~~~~~~~~~~~~~~~~~
@@ -566,43 +570,6 @@ This means that it is run on essentially any change to any of the components of 
 This is perhaps unnecessarily often, but it is not harmful since schema writes are idempotent: if a schema submitted to the registry exactly matches an existing schema, then no change is made.
 
 
-A note on the response format from the registry
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The Schema Registry responds to a request for a particular schema (for example, https://alert-schemas-int.lsst.cloud/schemas/ids/1) with a JSON payload.
-The JSON payload's shape is:
-
-.. code-block:: json
-
-   {
-      "schema": "<schema-document-as-a-string>",
-   }
-
-Avro schema documents are JSON objects already, but the Schema Registry flattens this JSON object into a single string, adding escape backslashes in front of each double-quote character, and stripping it of whitespace.
-So, for example, this schema:
-
-.. code-block:: json
-
-  {
-    "type": "record",
-     "namespace": "com.example",
-     "name": "FullName",
-     "fields": [
-       { "name": "first", "type": "string" },
-       { "name": "last", "type": "string" }
-     ]
-  }
-
-would be encoded like this:
-
-.. code-block:: json
-
-   {
-      "schema": "{\"type\":\"record\",\"namespace\":\"com.example\",\"name\":\"FullName\",\"fields\":[{\"name\":\"first\",\"type\":\"string\"},{\"name\":\"last\",\"type\":\"string\"}]}"
-   }
-
-This can be quite confusing, but to use the schema it must be doubly-deserialized: first the outer response needs to be parsed, then the value under the ``"schema"`` key must be parsed.
-
 
 Alert Stream Simulator
 ----------------------
@@ -670,6 +637,8 @@ It is concerned only with reading data from the topic created by the load-data j
 The alert messages are not modified in any way, so (for example) their alert IDs and exposure timestamps will not be changed.
 
 The deployment uses the same KafkaUser as the load-data job for simplicity.
+
+.. _replay-topic-config:
 
 KafkaTopic for replay
 *********************
@@ -895,6 +864,133 @@ New teams can be added by modifying this Gafaelfawr configuration, and new users
 
 An authorized user can thus gain access to the alerts by going through a redirecting URL.
 For example, to view the schema with ID 1 (which is at https://data-int.lsst.cloud/alertdb/v1/schemas/1), a user could be directed to https://data-int.lsst.cloud/login?rd=https://data-int.lsst.cloud/alertdb/v1/schemas/1 .
+
+
+.. _clients:
+
+Clients
+=======
+
+Clients access the Alert Distribution System from across the public internet.
+There are three subsystems that they access: Kafka, the Schema Registry, and the Alert Database.
+
+Each of these three has different access mechanisms which are discussed in this section.
+
+Kafka Clients
+--------------
+
+The Kafka system provides the stream of alert packet data in a Kafka topic.
+
+Each alert is delivered as a separate Kafka message, encoded in Confluent Wire Format :cite:`confluent-wire-format`.
+That is, the Kafka message starts with a zero byte, then a 4-byte little-endian integer which represents that *schema ID*, and then the alert data in binary-encoded Avro format.
+
+The Schema ID can be provided to the Schema Registry to retrieve an Avro schema document which can be used to deserialize the binary-encoded Avro data into an alert packet.
+
+Messages are retained in the simulated alert topic for 7 days, as configured in :ref:`replay-topic-config`.
+
+Clients connect to the alert stream by accessing the bootstrap URL of the Kafka cluster, ``alert-stream-int.lsst.cloud:9094``.
+They must provide their username and password under SCRAM-SHA-512 authentication, and must use a consumer group ID which is prefixed with their username (see also: `kafka-users`_).
+
+The name of the alert stream topic is 'alerts-simulated'.
+
+Detailed walkthroughs of connecting to the Kafka endpoint of the alert stream are provided in `Alert Stream Integration Endpoint Examples`_.
+The examples in following that link have very thoroughly commented example scripts which explain every detail needed to connect.
+
+.. _Alert Stream Integration Endpoint Examples: https://github.com/lsst-dm/sample_alert_info/tree/main/examples/alert_stream_integration_endpoint
+
+Schema Registry Clients
+-----------------------
+
+The schema registry provides read-only access to the Avro schemas used to encode alert packets.
+It uses the API described in its own documentation :cite:`schema-registry-api`; only the GET endpoints are accessible over the internet.
+
+The registry runs at https://alert-schemas-int.lsst.cloud/.
+Users are expected to use a client library (probably as part of their Kafka client library) to connect.
+Detailed examples are available in the `Alert Stream Integration Endpoint Examples`_.
+
+A note on the schema registry response format
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Schema Registry responds to a request for a particular schema (for example, https://alert-schemas-int.lsst.cloud/schemas/ids/1) with a JSON payload.
+The JSON payload's shape is:
+
+.. code-block:: json
+
+   {
+      "schema": "<schema-document-as-a-string>",
+   }
+
+Avro schema documents are JSON objects already, but the Schema Registry flattens this JSON object into a single string, adding escape backslashes in front of each double-quote character, and stripping it of whitespace.
+So, for example, this schema:
+
+.. code-block:: json
+
+  {
+    "type": "record",
+     "namespace": "com.example",
+     "name": "FullName",
+     "fields": [
+       { "name": "first", "type": "string" },
+       { "name": "last", "type": "string" }
+     ]
+  }
+
+would be encoded like this:
+
+.. code-block:: json
+
+   {
+      "schema": "{\"type\":\"record\",\"namespace\":\"com.example\",\"name\":\"FullName\",\"fields\":[{\"name\":\"first\",\"type\":\"string\"},{\"name\":\"last\",\"type\":\"string\"}]}"
+   }
+
+This can be quite confusing, but to use the schema it must be doubly-deserialized: first the outer response needs to be parsed, then the value under the ``"schema"`` key must be parsed.
+
+Alert Database Clients
+----------------------
+
+The Alert Database provides access to all published alerts, as well as the schemas used to encode them, over an HTTP interface.
+
+The alert messages are stored exactly as they were sent in Kafka - that is, in Confluent Wire Format.
+Schemas are indexed by their schema ID.
+
+Clients must provide credentials which will be accepted by Gafaelfawr to access the alert database.
+This requires a "token" that will be included in requests.
+
+To generate a token, navigate to the Gafaelfawr token generation page, https://data-int.lsst.cloud/auth/tokens/.
+Click on "Create Token" and choose the ``read:alertdb`` scope.
+
+Store the token value securely somewhere.
+This token will be used in HTTP client requests in an ``Authorization`` header in the format ``Authorization: Bearer <token>``.
+
+With this header set, GET requests can be made to "https://data-int.lsst.cloud/alertdb/v1/schemas/{id}" to get a schema by ID, or "https://data-int.lsst.cloud/alertdb/v1/alerts/{id}" to get an alert by ID.
+
+For example, with Python's Requests library:
+
+.. code-block:: python
+
+   import requests
+   import os
+
+   token = os.environ["SECRET_TOKEN_VALUE"]
+
+   def get_schema(id):
+       response = requests.get(
+           f"https://data-int.lsst.cloud/alertdb/v1/schemas/{id}",
+           headers={"Authorization": f"Bearer {token}"},
+       )
+       response.raise_for_status()
+       return response.content
+
+
+   def get_raw_alert(alert_id):
+       response = requests.get(
+           f"https://data-int.lsst.cloud/alertdb/v1/alerts/{alert_id}",
+           headers={"Authorization": f"Bearer {token}"},
+       )
+       response.raise_for_status()
+       return response.content
+
+
 
 Design Decisions
 ================
