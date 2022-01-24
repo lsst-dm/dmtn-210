@@ -13,7 +13,11 @@ The implementation runs on the shared Rubin Science Platform Kubernetes cluster 
 This document aims to be a point-in-time record of what exists, and to explain implementation decisions made during construction.
 An overview is provided of the system's concepts and components, and then each is described in detail.
 
-At the highest conceptual level, it is composed of an Apache Kafka :cite:`kafka` cluster, a Confluent Schema Registry :cite:`confluent-schema-registry`, software to generate simulated alerts, and an alert database implemenntation following the design laid out in DMTN-183 :cite:`DMTN-183`.
+At the highest conceptual level, it is composed of an Apache Kafka :cite:`kafka` cluster, a Confluent Schema Registry :cite:`confluent-schema-registry`, software to generate simulated alerts (described in DMTN-149 :cite:`DMTN-149`), and an alert database implemenntation following the design laid out in DMTN-183 :cite:`DMTN-183`.
+
+The overall design was envisioned in DMTN-093 :cite:`DMTN-093`.
+In practice there may be differences between this implementation and that design document.
+These are due to practical requirements that were discovered during the implementation of the system.
 
 Terminology and Concepts
 ========================
