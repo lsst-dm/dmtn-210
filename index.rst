@@ -7,7 +7,7 @@
 Overview
 ========
 
-Rubin's Alert Distribution System is implemented in the integration environment at the interim data facility (the "IDF").
+We describe the deployment of Rubin's Alert Distribution System in the integration environment at the interim data facility (the "IDF").
 The implementation runs on the shared Rubin Science Platform Kubernetes cluster in the IDF.
 
 This document aims to be a point-in-time record of what exists, and to explain implementation decisions made during construction.
@@ -139,7 +139,7 @@ These will each now be explained in further detail.
 ~~~~~~~~~~~~~~~~~~
 
 The ``Kafka`` resource is the primary configuration object of the Kafka cluster, defined in `kafka.yaml`_.
-There's a lot going on in its configuration; this section attempts to explain some of the most important sections without going every line.
+There's a lot going on in its configuration; this section attempts to explain some of the most important sections without going through every line.
 
 .. _listeners:
 
@@ -155,7 +155,7 @@ We use three listeners: two internal listeners with ``tls`` authentication (mean
 
 The first internal listener, on port 9092 and named 'internal', is used by applications internal to the Alert Distribution System, such as the Alert Database and Alert Stream Simulator.
 
-The second internal listener, on port 9093 and named 'tls', is used by the Schema Registry, since it the Strimzi Registry Operator is currently hardcoded to only use configure a Registry to connect to a listener with that name.
+The second internal listener, on port 9093 and named 'tls', is used by the Schema Registry, since it the Strimzi Registry Operator is currently hardcoded to only use a Registry to connect to a listener with that name.
 
 Because these are ``internal``-typed listeners, they are only accessible within the Kubernetes cluster, not to any users from across the internet.
 
@@ -803,7 +803,7 @@ Ingress (and Service)
 ~~~~~~~~~~~~~~~~~~~~~
 
 The Ingress (in `alert-database/templates/ingress.yaml`_) provides external access to the Alert Database server.
-In order to do so, we also need a Service, which is a Kubernetes abstraction which allows a Deployment to be targettable by an Ingress.
+In order to do so, we also need a Service, which is a Kubernetes abstraction which allows a Deployment to be targetable by an Ingress.
 
 The Ingress for the Alert Database is set up to accept requests on a URL prefix.
 For the IDF integration environment, that means that requests to "https://data-int.lsst.cloud/alertdb" are routed to the Alert Database server.
