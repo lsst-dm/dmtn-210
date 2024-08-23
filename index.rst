@@ -52,12 +52,13 @@ Helm Charts
 Helm :cite:`helm` is a project which provides tools for templating the YAML resource definitions used in Kubernetes.
 The templates are called _Charts_, and provide a flexible way to represent common or repeated configuration.
 
-For the Rubin IDF, all charts are defined in the `lsst-sqre/charts`_ repository.
+For the Rubin USDF, shared charts are defined in the `lsst-sqre/charts`_ repository and application specific charts are
+defined within the applications directory `https://github.com/lsst-sqre/phalanx/tree/main/applications/alert-stream-broker/charts`_.
 
 Charts are reified into infrastructure using a set of *values* which populate the templates.
-For the Rubin IDF, the values to be used are defined in the `lsst-sqre/phalanx`_ repository.
+For the Rubin USDF, the values to be used are defined in the `lsst-sqre/phalanx`_ repository.
 
-These two repositories are part of the Phalanx system, described in SQR-056 :cite:`SQR-056` and at `phalanx.lsst.io <https://phalanx.lsst.io/>`__.
+These repositories are part of the Phalanx system, described in SQR-056 :cite:`SQR-056` and at `phalanx.lsst.io <https://phalanx.lsst.io/>`__.
 
 Argo
 ----
@@ -166,7 +167,7 @@ Because these are ``internal``-typed listeners, they are only accessible within 
 
 The third listener is an external one, meaning that it is accessible over the internet.
 It is configured to be ``loadbalancer``-typed, which tells the Strimzi Operator that we would like a `Kubernetes Service with a type of LoadBalancer`_ to be provisioned on our behalf.
-This, in turn, triggers creation of a `Google Cloud Network Load Balancer`_, which has a public IP address which can be used to connect to the service.
+This, in turn, triggers creation of a `Cloud Network Load Balancer`_, which has a public IP address which can be used to connect to the service.
 There are two important things to note about this system.
 
 
@@ -436,8 +437,8 @@ The schemas provide instructions to Avro libraries on how to parse binary serial
 Confluent Schema Registry uses a Kafka topic as its backing data store.
 The Registry itself is a lightweight HTTP API fronting this data in Kafka.
 
-The Schema Registry is currently running at https://alert-schemas-int.lsst.cloud/.
-For example, to retrieve schema ID 1, you can issue an HTTP GET to https://alert-schemas-int.lsst.cloud/schemas/ids/1.
+The Schema Registry is currently running at https://usdf-alert-schemas-dev.slac.stanford.edu/.
+For example, to retrieve schema ID 701, you can issue an HTTP GET to https://usdf-alert-schemas-dev.slac.stanford.edu/schemas/ids/701.
 
 The Schema Registry for the Alert Distribution System is implemented with a Helm chart in the charts repository, `alert-stream-schema-registry`_.
 This chart defines five resources:
@@ -553,7 +554,9 @@ Once the Schema Registry is running, we need to insert the right versions of the
 This is done through a Kubernetes "Job", which is a set of instructions to run certain commands inside a container in the Kubernetes cluster. That Job is defined in `sync-schema-job.yaml`_.
 
 The schema synchronization job is a wrapper around a script in the `lsst/alert_packet`_ repository.
-The script is named ``syncLatestSchemaToRegistry.py``, and its name says it all: it takes the latest (and **only** the latest) schema checked into the `lsst/alert_packet`_ repository and submits it to a Schema Registry.
+The script is named ``syncAllSchemasToRegistry.py``, and its describes the function: it syncs all schemas contained in the `lsst/alert_packet`_
+repository and submits it to the Schema Registry. Due to the details of how the Schema Registry handles schemas, it must be recreated from scratch each time.
+However, the synchronization script ensures that the uploaded schemas will always be assigned the same id.
 
 Kubernetes Jobs need to be wrapped in containers, so this script is bundled into a Docker container in the `lsst/alert_packet`_ continuous integration system.
 In particular, a Github Workflow named `build_sync_container.yml`_ builds the alert_packet Python package and sets up the script in a container, and then pushes the built container to Dockerhub in the ``lsstdm/lsst_alert_packet`` repository.
@@ -566,13 +569,16 @@ The built Docker container is tagged with the Git ref that triggered the build. 
 This value is passed in as the ``schemaSync.image.tag`` value when configuring the `alert-stream-schema-registry`_ chart.
 Note that this version is probably **not** the version of the Alert Packet Schema that will be synchronized since the version of the alert_packet repository is independent from that of the schemas.
 
+If syncing the registry does not trigger a refresh of the Docker image, the Docker ``digest`` can be passed to ``schemaSync.image.digest``` which can force a refresh of the Docker image.
+
 When the Job runs
 *****************
 
-The Job runs whenever the alert-stream-broker Phalanx service is synchronized in Argo CD.
+The Job runs whenever the full alert-stream-broker Phalanx service is synchronized in Argo CD, not when individual components are synced.
 This means that it is run on essentially any change to any of the components of the entire Alert Distribution System, not just when the alert packet schema changes.
 
-This is perhaps unnecessarily often, but it is not harmful since schema writes are idempotent: if a schema submitted to the registry exactly matches an existing schema, then no change is made.
+This is perhaps unnecessarily often, but no user-facing changes will be apparent as the schema ids are manually assigned. The schema registry
+will be remade the same way every sync.
 
 
 
@@ -909,14 +915,14 @@ Schema Registry Clients
 The schema registry provides read-only access to the Avro schemas used to encode alert packets.
 It uses the API described in its own documentation :cite:`schema-registry-api`; only the GET endpoints are accessible over the internet.
 
-The registry runs at https://alert-schemas-int.lsst.cloud/.
+The registry runs at https://usdf-alert-schemas-dev.slac.stanford.edu/.
 Users are expected to use a client library (probably as part of their Kafka client library) to connect.
 Detailed examples are available in the `Alert Stream Integration Endpoint Examples`_.
 
 A note on the schema registry response format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The Schema Registry responds to a request for a particular schema (for example, https://alert-schemas-int.lsst.cloud/schemas/ids/1) with a JSON payload.
+The Schema Registry responds to a request for a particular schema (for example, https://usdf-alert-schemas-dev.slac.stanford.edu/schemas/ids/701) with a JSON payload.
 The JSON payload's shape is:
 
 .. code-block:: json
@@ -1091,12 +1097,12 @@ We probably would have had to replicate a great deal of its functionality to bui
 .. _rbac.yaml: https://github.com/lsst-sqre/charts/blob/fb84ce842d3ad95714ee43b53601436a7ac86a95/charts/strimzi-registry-operator/templates/rbac.yaml
 
 .. alert-stream-schema-registry:
-.. _alert-stream-schema-registry: https://github.com/lsst-sqre/charts/tree/master/charts/alert-stream-schema-registry
-.. _schema-registry-server.yaml: https://github.com/lsst-sqre/charts/blob/fb84ce842d3ad95714ee43b53601436a7ac86a95/charts/alert-stream-schema-registry/templates/schema-registry-server.yaml
-.. _schema-registry-topic.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/schema-registry-topic.yaml
-.. _schema-registry-user.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/schema-registry-user.yaml
-.. _ingress.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/ingress.yaml
-.. _sync-schema-job.yaml: https://github.com/lsst-sqre/charts/blob/master/charts/alert-stream-schema-registry/templates/sync-schema-job.yaml
+.. _alert-stream-schema-registry: https://github.com/lsst-sqre/phalanx/tree/main/applications/alert-stream-broker/charts/alert-stream-schema-registry
+.. _schema-registry-server.yaml: https://github.com/lsst-sqre/phalanx/blob/main/applications/alert-stream-broker/charts/alert-stream-schema-registry/templates/schema-registry-server.yaml
+.. _schema-registry-topic.yaml: https://github.com/lsst-sqre/phalanx/blob/main/applications/alert-stream-broker/charts/alert-stream-schema-registry/templates/schema-registry-topic.yaml
+.. _schema-registry-user.yaml: https://github.com/lsst-sqre/phalanx/blob/main/applications/alert-stream-broker/charts/alert-stream-schema-registry/templates/schema-registry-user.yaml
+.. _ingress.yaml: https://github.com/lsst-sqre/phalanx/blob/main/applications/alert-stream-broker/charts/alert-stream-schema-registry/templates/ingress.yaml
+.. _sync-schema-job.yaml: https://github.com/lsst-sqre/phalanx/blob/main/applications/alert-stream-broker/charts/alert-stream-schema-registry/templates/sync-schema-job.yaml
 
 .. _alert-database: https://github.com/lsst-sqre/charts/tree/master/charts/alert-database
 
