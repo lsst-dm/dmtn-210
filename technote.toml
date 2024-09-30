@@ -1,9 +1,0 @@
-[technote]
-id = "DMTN-210"
-series_id = "DMTN"
-canonical_url = "https://dmtn-210.lsst.io/"
-github_url = "https://github.com/lsst-dm/dmtn-210"
-github_default_branch = "main"
-organization.name = "Vera C. Rubin Observatory"
-organization.ror = "https://ror.org/048g3cy84"
-license.id = "CC-BY-4.0"
