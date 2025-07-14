@@ -7,3 +7,20 @@ github_default_branch = "main"
 organization.name = "Vera C. Rubin Observatory"
 organization.ror = "https://ror.org/048g3cy84"
 license.id = "CC-BY-4.0"
+
+[[technote.authors]]
+name.given = "Spencer"
+name.family = "Nelson"
+internal_id = "nelsons"
+[[technote.authors.affiliations]]
+name = "University of Washington, Department of Astronomy"
+internal_id = "Washington"
+address = "Box 351580, Seattle, WA 98195, USA"
+[[technote.authors]]
+name = {given = "Brianna M.", family = "Smart"}
+internal_id = "smartbm"
+orcid = "https://orcid.org/0000-0002-3677-0571"
+[[technote.authors.affiliations]]
+name = "University of Washington, Department of Astronomy"
+internal_id = "Washington"
+address = "Box 351580, Seattle, WA 98195, USA"
