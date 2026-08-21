@@ -553,6 +553,8 @@ will be remade the same way every sync.
 
 
 
+.. _kafka-users:
+
 Alert Brokers
 -------------
 
