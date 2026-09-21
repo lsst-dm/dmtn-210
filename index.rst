@@ -20,7 +20,7 @@ At the highest conceptual level, it is composed of an Apache Kafka :cite:`kafka`
 for community alert brokers, an alert database for archival storage, and monitoring tooling.
 
 The system runs on dedicated Kubernetes clusters: ``usdfprod-prompt-processing`` for production and ``usdfdev-prompt-processing`` for development.
-It is deployed as part of the **Sasquatch** Phalanx application :cite:`SQR-056`, which is Rubin Observatory's telemetry platform.
+It is deployed as part of the **Sasquatch** Phalanx application :cite:`SQR-056`, which is Rubin Observatory's Kafka Messaging and Telemetry Platform.
 
 The overall design was envisioned in DMTN-093 :cite:`DMTN-093`.
 In practice there are differences between this implementation and that design document due to practical requirements discovered during construction and production.
@@ -102,7 +102,8 @@ The Alert Distribution System has six principal components:
 3. The **Alert Stream Schema Sync** (``alert-stream-schema-sync`` chart) is a Kubernetes Job that loads alert packet schemas from the `lsst/alert_packet`_ repository into the Schema Registry.
 4. The **Alert Brokers** (``alert-brokers`` chart) defines Kafka topics and user identities for community brokers that consume the alert stream.
 5. The **Alert Database** (``alert-database`` chart) is a subsystem which archives alerts and schemas from Kafka into S3-compatible object storage and serves them via HTTP.
-6. **Kafbat** (``kafbat`` chart) is a web-based monitoring UI for inspecting Kafka topics, consumer groups, schemas, and broker configuration.
+6. **Kafbat** (``kafbat`` chart) is a web-based monitoring UI for inspecting Kafka topics, consumer groups, schemas, and broker configuration. We use Kafbat in read only mode, and all
+configurations are set via Kubernetes manifests.
 
 .. figure:: ArchitectureDiagram.png
 
@@ -130,10 +131,9 @@ All configuration is defined in the `strimzi-kafka charts`_ and subsequent templ
 The yaml files within the chart define the following resources with general templates:
 
 1. A ``Kafka`` resource which defines the cluster's listeners, authorization, and core configuration.
-2. A ``Certificate`` resource used to provision a TLS certificate for the Kafka cluster's external address, defined in `certificates.yaml`_.
-3. ``KafkaNodePool`` resources for controller and broker node pools.
-4. ``KafkaUser`` resources for superuser and service accounts, defined in `superusers.yaml`_ and `users.yaml`_.
-5. Optional ``KafkaRebalance`` resources for broker migration.
+2. ``KafkaNodePool`` resources for controller and broker node pools.
+3. ``KafkaUser`` resources for superuser and service accounts, defined in `superusers.yaml`_ and `users.yaml`_.
+4. Optional ``KafkaRebalance`` resources for broker migration.
 
 Additional yamls are present to configure other monitoring tools.
 
@@ -661,7 +661,8 @@ The ``prompt-alert`` account is used by Prompt Processing to publish alert packe
 Password Management
 ~~~~~~~~~~~~~~~~~~~
 
-User passwords are stored in the USDF Vault and synchronized into the ``sasquatch`` Kubernetes Secret.
+User passwords are stored in the USDF Vault and synchronized into the ``sasquatch`` Kubernetes Secret automatically
+with the Vault Secrets Operator..
 The ``KafkaUser`` resources reference these passwords:
 
 .. code-block:: yaml
@@ -679,13 +680,13 @@ Passwords can be managed through 1Password (via the RSP-Vault vault in the LSST 
 See DMTN-214 :cite:`DMTN-214` for operational procedures.
 
 
-Alert Database
---------------
+Alert Database Services
+-----------------------
 
-The Alert Database is responsible for storing an archival copy of all alert data published to the alert stream.
-It stores alert packets and schemas in S3-compatible object storage and provides HTTP-based access to the archive.
+The Alert Database is responsible for storing an archival copy of all alert data published to the alert stream and is
+split between an Alert Database Ingester and storage and Herald, which provides user access to the database.
 
-The Alert Database's design is described in DMTN-183 :cite:`DMTN-183`.
+The Alert Database's original design is described in DMTN-183 :cite:`DMTN-183`.
 
 An *ingester* consumes data from the published alert stream and copies it (along with any schemas referenced) into the backing object store.
 The ingester is implemented in the `lsst-dm/alert_database_ingester`_ repository.
