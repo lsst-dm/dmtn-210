@@ -102,8 +102,7 @@ The Alert Distribution System has six principal components:
 3. The **Alert Stream Schema Sync** (``alert-stream-schema-sync`` chart) is a Kubernetes Job that loads alert packet schemas from the `lsst/alert_packet`_ repository into the Schema Registry.
 4. The **Alert Brokers** (``alert-brokers`` chart) defines Kafka topics and user identities for community brokers that consume the alert stream.
 5. The **Alert Database** (``alert-database`` chart) is a subsystem which archives alerts and schemas from Kafka into S3-compatible object storage and serves them via HTTP.
-6. **Kafbat** (``kafbat`` chart) is a web-based monitoring UI for inspecting Kafka topics, consumer groups, schemas, and broker configuration. We use Kafbat in read only mode, and all
-configurations are set via Kubernetes manifests.
+6. **Kafbat** (``kafbat`` chart) is a web-based monitoring UI for inspecting Kafka topics, consumer groups, schemas, and broker configuration. We use Kafbat in read only mode, and all configurations are set via Kubernetes manifests.
 
 .. figure:: ArchitectureDiagram.png
 
