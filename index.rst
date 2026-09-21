@@ -972,7 +972,6 @@ The alert stream components are enabled per-environment through boolean flags in
 
 .. strimzi-kafka templates:
 .. _kafka.yaml: https://github.com/lsst-sqre/phalanx/blob/main/applications/sasquatch/charts/strimzi-kafka/templates/kafka.yaml
-.. _certificates.yaml: https://github.com/lsst-sqre/phalanx/blob/main/applications/sasquatch/charts/strimzi-kafka/templates/certificates.yaml
 .. _superusers.yaml: https://github.com/lsst-sqre/phalanx/blob/main/applications/sasquatch/charts/strimzi-kafka/templates/superusers.yaml
 .. _users.yaml: https://github.com/lsst-sqre/phalanx/blob/main/applications/sasquatch/charts/strimzi-kafka/templates/users.yaml
 
